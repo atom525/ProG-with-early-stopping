@@ -13,7 +13,7 @@ import time
 from ..defines import GRAPH_TASKS, NODE_TASKS
 from .base import PreTrain
 from prompt_graph.utils.paths import get_pretrain_save_path
-from prompt_graph.utils.train_logger import train_info, epoch_training, epoch_evaluating, valid_result, finished_training, early_stopping_msg, model_saved, metric_from_dict, to_ordered_metrics
+from prompt_graph.utils.train_logger import train_info, epoch_training, epoch_evaluating, valid_result, finished_training, early_stopping_msg, model_saved, metric_from_dict, to_ordered_metrics, best_valid_ordered
 import os
 
 class Edgepred_GPPT(PreTrain):
@@ -121,7 +121,7 @@ class Edgepred_GPPT(PreTrain):
         patience = getattr(args, 'patience', 20) if args else 20
         eval_every = (getattr(args, 'eval_every', 1) or 1) if args else 1
         early_stopping_metric = getattr(args, 'early_stopping_metric', 'valid_acc') or 'valid_acc'
-        met_name = early_stopping_metric if early_stopping_metric == 'valid_acc' else 'valid_acc'
+        met_name = early_stopping_metric
         best_val_metric = -1.0
         best_epoch = 0
         cnt_wait = 0
@@ -132,7 +132,7 @@ class Edgepred_GPPT(PreTrain):
             train_loss = self.pretrain_one_epoch()
             train_time = time.time() - st_time
             epoch_training(epoch, train_time, train_loss)
-            if epoch % eval_every == 0 or epoch == 1:
+            if epoch % eval_every == 0:
                 eval_st = time.time()
                 valid_acc = self.evaluate_valid_acc()
                 eval_time = time.time() - eval_st
@@ -156,7 +156,7 @@ class Edgepred_GPPT(PreTrain):
             self.gnn.to(self.device)
         finished_training(best_epoch if best_epoch > 0 else 1)
         if best_valid_metrics:
-            train_info("best valid: {}".format(best_valid_metrics))
+            best_valid_ordered(best_valid_metrics)
         suffix = ".{}.{}hidden_dim".format(self.gnn_type, self.hid_dim)
         save_path = get_pretrain_save_path(self.dataset_name, 'Edgepred_GPPT', suffix=suffix)
         torch.save(self.gnn.state_dict(), save_path)

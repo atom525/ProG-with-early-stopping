@@ -26,6 +26,11 @@ def parse_skipgram(fname):
             it += 1
     return ret
 
+def _safe_label_item(y):
+    """兼容 y 为标量 tensor(0) 或 1维 tensor([0]) 等形状"""
+    from .labels import safe_graph_label
+    return safe_graph_label(y)
+
 # Process a (subset of) a TU dataset into standard form
 def process_tu(data,class_num,node_class):
     nb_nodes = data.num_nodes
@@ -41,7 +46,7 @@ def process_tu(data,class_num,node_class):
         if g == 0:
             # sizes = data[g].x.shape[0]
             features = data[g].x[ :,node_class_num]
-            rawlabels = data[g].y[0]
+            rawlabels = np.array([_safe_label_item(data[g].y)])
             # masks[g, :sizes[g]] = 1.0
             e_ind = data[g].edge_index
             # print("e_ind",e_ind)
@@ -51,8 +56,8 @@ def process_tu(data,class_num,node_class):
         else:
             tmpfeature = data[g].x[ :,node_class_num]
             features = np.row_stack((features,tmpfeature))
-            tmplabel = data[g].y[0]
-            rawlabels = np.row_stack((rawlabels,tmplabel))
+            tmplabel = _safe_label_item(data[g].y)
+            rawlabels = np.row_stack((rawlabels, np.array([tmplabel])))
             e_ind = data[g].edge_index
             coo = sp.coo_matrix((np.ones(e_ind.shape[1]), (e_ind[0, :], e_ind[1, :])), shape=(tmpfeature.shape[0], tmpfeature.shape[0]))
             # print("coo",coo)
@@ -63,10 +68,8 @@ def process_tu(data,class_num,node_class):
             adjacency = np.row_stack((tmpadj1,tmpadj2))
 
     for x in range(nb_graphs):
-        if nb_graphs == 1:
-            labels[0][rawlabels.item()]=1
-            break
-        labels[x][rawlabels[x][0]] = 1
+        lab = int(np.asarray(rawlabels).flatten()[x])
+        labels[x][lab] = 1
     
     adj = sp.csr_matrix(adjacency)
 

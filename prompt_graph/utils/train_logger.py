@@ -34,20 +34,30 @@ def epoch_evaluating(epoch, time_s, valid_score, score_name="valid_score"):
     train_info("epoch {} evaluating [time: {:.2f}s, {}: {:.6f}]".format(epoch, time_s, score_name, valid_score))
 
 
-def valid_result(metrics):
+def valid_result(metrics, nonzero_only=True):
     """
     valid result: metric1: val1 metric2: val2 ...
-    metrics: dict or OrderedDict, 如 {'valid_acc': 0.85, 'valid_f1': 0.82, ...}
+    仅打印非 0 值（nonzero_only=True），便于预训练/下游不同指标混排时简洁输出
     """
-    parts = " ".join("{}: {:.6f}".format(k, v) for k, v in metrics.items())
+    if nonzero_only:
+        filtered = {k: v for k, v in metrics.items() if v is not None and (not isinstance(v, (int, float)) or abs(float(v)) > 1e-9)}
+    else:
+        filtered = dict(metrics)
+    if not filtered:
+        train_info("valid result: (no nonzero metrics)")
+        return
+    parts = " ".join("{}: {:.6f}".format(k, v) for k, v in filtered.items())
     train_info("valid result: {}".format(parts))
 
 
-def best_valid_ordered(metrics):
-    """best valid: OrderedDict([('m1', v1), ('m2', v2), ...])"""
-    if not isinstance(metrics, OrderedDict):
-        metrics = OrderedDict(metrics) if isinstance(metrics, dict) else OrderedDict([("valid_acc", metrics)])
-    train_info("best valid: {}".format(metrics))
+def best_valid_ordered(metrics, nonzero_only=True):
+    """best valid: 仅打印非 0 值"""
+    if not isinstance(metrics, (dict, OrderedDict)):
+        metrics = OrderedDict([("valid_acc", metrics)])
+    metrics = OrderedDict(metrics) if isinstance(metrics, dict) else OrderedDict(metrics)
+    if nonzero_only:
+        metrics = OrderedDict((k, v) for k, v in metrics.items() if v is not None and (not isinstance(v, (int, float)) or abs(float(v)) > 1e-9))
+    train_info("best valid: {}".format(metrics if metrics else "(no nonzero metrics)"))
 
 
 def test_result_ordered(metrics):

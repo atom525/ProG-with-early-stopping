@@ -58,6 +58,8 @@ def merge_config_with_args(config: Config, args: Namespace) -> Namespace:
     # (args_key, config_val_getter, cli_flag)
     merge_items = [
         ('split_ratio', config.get_split_ratio, '--split_ratio'),
+        ('seed', lambda: config.get('seed', 42), '--seed'),
+        ('runseed', lambda: config.get('runseed', 0), '--runseed'),
         ('patience', config.get_patience, '--patience'),
         ('save_best', lambda: config.get('save_best', Config.DEFAULT_SAVE_BEST), '--save_best'),
         ('checkpoint_dir', config.get_checkpoint_dir, '--checkpoint_dir'),

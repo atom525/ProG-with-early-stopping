@@ -17,7 +17,7 @@ from tqdm import tqdm
 from functools import partial
 import numpy as np
 from prompt_graph.model import GAT, GCN, GCov, GIN, GraphSAGE, GraphTransformer
-from prompt_graph.utils.train_logger import train_info, epoch_training, epoch_evaluating, valid_result, finished_training, early_stopping_msg, model_saved, metric_from_dict, to_ordered_metrics
+from prompt_graph.utils.train_logger import train_info, epoch_training, epoch_evaluating, valid_result, finished_training, early_stopping_msg, model_saved, metric_from_dict, to_ordered_metrics, best_valid_ordered
 
 def sce_loss(x, y, alpha=3):
     x = F.normalize(x, p=2, dim=-1)
@@ -251,7 +251,7 @@ class GraphMAE(PreTrain):
         patience = getattr(args, 'patience', 20) if args else 20
         eval_every = (getattr(args, 'eval_every', 1) or 1) if args else 1
         early_stopping_metric = getattr(args, 'early_stopping_metric', 'valid_acc') or 'valid_acc'
-        met_name = early_stopping_metric if early_stopping_metric == 'valid_acc' else 'valid_acc'
+        met_name = early_stopping_metric
         loss_metric = MeanMetric()
         best_val_metric = -1.0
         cnt_wait = 0
@@ -273,7 +273,7 @@ class GraphMAE(PreTrain):
             train_time = time.time() - st_time
             train_loss = loss_metric.compute().item()
             epoch_training(epoch + 1, train_time, train_loss)
-            if (epoch + 1) % eval_every == 0 or epoch == 0:
+            if (epoch + 1) % eval_every == 0:
                 eval_st = time.time()
                 valid_acc = self.evaluate_valid_acc()
                 eval_time = time.time() - eval_st
@@ -297,7 +297,7 @@ class GraphMAE(PreTrain):
             self.gnn.to(self.device)
         finished_training(best_epoch if best_epoch > 0 else 1)
         if best_valid_metrics:
-            train_info("best valid: {}".format(best_valid_metrics))
+            best_valid_ordered(best_valid_metrics)
         suffix = ".{}.{}hidden_dim".format(self.gnn_type, self.hid_dim)
         save_path = get_pretrain_save_path(self.dataset_name, 'GraphMAE', suffix=suffix)
         torch.save(self.gnn.state_dict(), save_path)

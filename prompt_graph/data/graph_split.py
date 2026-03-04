@@ -1,5 +1,6 @@
 import random
 import torch
+from prompt_graph.utils.labels import safe_graph_label
 
 
 def graph_split(graph_list, shot_num, split_ratio=None):
@@ -57,7 +58,7 @@ def graph_split(graph_list, shot_num, split_ratio=None):
 
     class_datasets = {}
     for data in graph_list:
-        label = data.y.item() if hasattr(data.y, 'item') else data.y
+        label = safe_graph_label(data.y)
         if label not in class_datasets:
             class_datasets[label] = []
         class_datasets[label].append(data)

@@ -74,7 +74,7 @@ def get_downstream_task_delegate(args:argparse.Namespace):
             epochs=args.epochs, device=args.device, lr=args.lr, wd=args.decay,
             split_ratio=getattr(args, 'split_ratio', [0.8, 0.1, 0.1]), patience=getattr(args, 'patience', 20),
             save_best=getattr(args, 'save_best', True), checkpoint_dir=ckpt_dir,
-            eval_every=getattr(args, 'eval_every', 1), early_stopping_metric=getattr(args, 'early_stopping_metric', 'valid_auroc'),
+            eval_every=getattr(args, 'eval_every', 1), early_stopping_metric=getattr(args, 'early_stopping_metric', 'valid_acc'),
             log_dir=getattr(args, 'log_dir', 'logs'), log_file=getattr(args, 'log_file', None),
             pre_train_model_path=args.pre_train_model_path,
         )

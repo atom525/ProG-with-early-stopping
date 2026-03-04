@@ -13,6 +13,10 @@ induced_graph_dir: outputs/induced_graph
 # 数据划分（预训练与下游统一：train / valid / test）
 split_ratio: [0.8, 0.1, 0.1]
 
+# 随机种子（可复现性）
+seed: 42                      # 数据划分、模型初始化等
+runseed: 0                    # 多次运行实验时的种子
+
 # 早停
 patience: 10                    # 连续多少轮验证指标不提升则停止
 # 可选：valid_acc / valid_f1 / valid_auroc / valid_auprc，下游任务早停指标

@@ -7,6 +7,7 @@ from prompt_graph.pretrain import GraphPrePrompt, NodePrePrompt
 from prompt_graph.registry import PromptRegistry
 from torch import nn, optim
 from prompt_graph.data import load4node, load4graph
+from prompt_graph.defines import GRAPH_TASKS
 from prompt_graph.utils import Gprompt_tuning_loss
 import numpy as np
 
@@ -118,14 +119,25 @@ class BaseTask:
         elif self.prompt_type == 'Gprompt':
             self.prompt = Gprompt(self.hid_dim).to(self.device)
         elif self.prompt_type == 'MultiGprompt':
+            self.prompt = None
             nonlinearity = 'prelu'
-            self.Preprompt = NodePrePrompt(self.dataset_name, self.hid_dim, nonlinearity, 0.9, 0.9, 0.1, 0.001, 1, 0.3).to(self.device)
-            self.Preprompt.load_state_dict(torch.load(self.pre_train_model_path))
+            device_id = self.device.index if self.device.type == 'cuda' else 0
+            if getattr(self, 'task_type', None) == 'GraphTask' and self.dataset_name in GRAPH_TASKS:
+                _, _, graph_list = load4graph(self.dataset_name, pretrained=True)
+                total = sum(self.split_ratio[:3]) if len(self.split_ratio) >= 3 else 1.0
+                pretrain_val_ratio = self.split_ratio[1] / total if total > 0 else 0.1
+                self.Preprompt = GraphPrePrompt(graph_list, self.input_dim, self.output_dim, self.dataset_name, self.hid_dim, nonlinearity, 0.9, 0.9, 0.1, 1, 0.3, device_id, pretrain_val_ratio=pretrain_val_ratio).to(self.device)
+                dgiprompt = self.Preprompt.dgi.prompt
+                graphcledgeprompt = self.Preprompt.graphcledge.prompt
+                lpprompt = self.Preprompt.lp.prompt
+            else:
+                self.Preprompt = NodePrePrompt(self.dataset_name, self.hid_dim, nonlinearity, 0.9, 0.9, 0.1, 0.001, 1, 0.3, device_id).to(self.device)
+                dgiprompt = self.Preprompt.dgiprompt.prompt
+                graphcledgeprompt = self.Preprompt.graphcledgeprompt.prompt
+                lpprompt = self.Preprompt.lpprompt.prompt
+            self.Preprompt.load_state_dict(torch.load(self.pre_train_model_path, map_location=self.device))
             self.Preprompt.eval()
-            self.feature_prompt = featureprompt(self.Preprompt.dgiprompt.prompt,self.Preprompt.graphcledgeprompt.prompt,self.Preprompt.lpprompt.prompt).to(self.device)
-            dgiprompt = self.Preprompt.dgi.prompt  
-            graphcledgeprompt = self.Preprompt.graphcledge.prompt
-            lpprompt = self.Preprompt.lp.prompt
+            self.feature_prompt = featureprompt(dgiprompt, graphcledgeprompt, lpprompt).to(self.device)
             self.DownPrompt = downprompt(dgiprompt, graphcledgeprompt, lpprompt, 0.001, self.hid_dim, self.output_dim, self.device).to(self.device)
         else:
             raise KeyError(" We don't support this kind of prompt.")

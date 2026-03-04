@@ -8,6 +8,7 @@ from prompt_graph.utils import process
 import prompt_graph.utils.aug as aug
 import os
 from torch_geometric.loader import DataLoader
+from torch_geometric.data import Batch
 from tqdm import tqdm, trange
 from prompt_graph.utils.paths import get_pretrain_save_path
 from prompt_graph.utils.train_logger import train_info, epoch_training, epoch_evaluating, valid_result, finished_training, early_stopping_msg, model_saved, metric_from_dict, to_ordered_metrics, best_valid_ordered
@@ -200,8 +201,8 @@ class NodePrePrompt(nn.Module):
             train_time = time.time() - st_time
             train_loss = loss.item()
 
-            if (epoch + 1) % eval_every == 0 or epoch == 0:
-                epoch_training(epoch + 1, train_time, train_loss)
+            epoch_training(epoch + 1, train_time, train_loss)
+            if (epoch + 1) % eval_every == 0:
                 eval_st = time.time()
                 valid_acc = self.evaluate_valid_acc()
                 eval_time = time.time() - eval_st
@@ -310,8 +311,12 @@ class GraphPrePrompt(nn.Module):
         with torch.no_grad():
             for g in self.val_graph_list:
                 try:
-                    features, adj_scipy = process.process_tu(g, self.output_dim, self.input_dim)
-                except Exception:
+                    # process_tu 期望 Batch 结构，单图需包装为 Batch
+                    batch_g = Batch.from_data_list([g])
+                    features, adj_scipy = process.process_tu(batch_g, self.output_dim, self.input_dim)
+                except Exception as e:
+                    import warnings
+                    warnings.warn("evaluate_valid_acc skip graph: {} -> {}".format(type(e).__name__, str(e)[:80]))
                     continue
                 nb_nodes = features.shape[0]
                 tuples = tu_prompt_pretrain_sample(adj_scipy, 50)
@@ -349,6 +354,7 @@ class GraphPrePrompt(nn.Module):
         self.to(self.device)
         optimiser = torch.optim.Adam(self.parameters(), lr=0.0001, weight_decay=0)
         for epoch in range(nb_epochs):
+            st_time = time.time()
             loss = 0
             drop_percent = 0.1
             for step, batch in enumerate(self.loader):
@@ -409,8 +415,9 @@ class GraphPrePrompt(nn.Module):
                 optimiser.step()
                 loss = loss + logit.item()
             loss = loss / (step + 1)
-            if (epoch + 1) % eval_every == 0 or epoch == 0:
-                epoch_training(epoch + 1, 0.0, loss)
+            train_time = time.time() - st_time
+            epoch_training(epoch + 1, train_time, loss)
+            if (epoch + 1) % eval_every == 0:
                 eval_st = time.time()
                 valid_acc = self.evaluate_valid_acc()
                 eval_time = time.time() - eval_st
@@ -484,7 +491,13 @@ def prompt_pretrain_sample(adj,n):
             res[i][0] = i
         else:
             res[i][0]=nonzero_index_i_row[0]
-        res[i][1:1+n]=zero_index_i_row[0:n]
+        n_actual = min(n, len(zero_index_i_row))
+        if n_actual > 0:
+            res[i][1:1+n_actual] = zero_index_i_row[0:n_actual]
+            if n_actual < n:
+                res[i][1+n_actual:1+n] = zero_index_i_row[0]
+        else:
+            res[i][1:1+n] = i
     return res.astype(int)
 
 def tu_prompt_pretrain_sample(adj,n):
@@ -504,7 +517,13 @@ def tu_prompt_pretrain_sample(adj,n):
             res[i][0] = i
         else:
             res[i][0]=nonzero_index_i_row[0]
-        res[i][1:1+n]=zero_index_i_row[0:n]
+        n_actual = min(n, len(zero_index_i_row))
+        if n_actual > 0:
+            res[i][1:1+n_actual] = zero_index_i_row[0:n_actual]
+            if n_actual < n:
+                res[i][1+n_actual:1+n] = zero_index_i_row[0]
+        else:
+            res[i][1:1+n] = i
     return res.astype(int)
 
 class weighted_feature(nn.Module):

@@ -8,9 +8,12 @@ from ..defines import GRAPH_TASKS
 from .task import BaseTask
 from prompt_graph.registry import PromptRegistry
 from prompt_graph.utils.paths import get_sample_data_graph_dir
-from prompt_graph.utils import center_embedding, Gprompt_tuning_loss,constraint
-from prompt_graph.evaluation import GpromptEva, GNNGraphEva, GPFEva, AllInOneEva, GPPTGraphEva
+from prompt_graph.utils import center_embedding, Gprompt_tuning_loss, constraint
+from prompt_graph.utils.labels import safe_graph_label
+from prompt_graph.evaluation import GpromptEva, GNNGraphEva, GPFEva, AllInOneEva, GPPTGraphEva, GraphMultiGpromptEva
 from prompt_graph.utils.train_logger import train_info, epoch_training, epoch_evaluating, valid_result, best_valid_ordered, test_result_ordered, finished_training, early_stopping_msg, model_loaded, to_ordered_metrics
+from prompt_graph.utils import process
+import scipy.sparse as sp
 import time
 import os 
 import numpy as np
@@ -163,7 +166,7 @@ class GraphTask(BaseTask):
                 graph=graph.to(self.device)              
                 node_embedding = self.gnn(graph.x,graph.edge_index)
                 out = self.prompt(node_embedding, graph.edge_index) # gppt下游在1-shot的时候，prompt结果为nan
-                loss = self.criterion(out, torch.full((1,graph.x.shape[0]), graph.y.item()).reshape(-1).to(self.device))
+                loss = self.criterion(out, torch.full((1,graph.x.shape[0]), safe_graph_label(graph.y)).reshape(-1).to(self.device))
                 temp_loss += loss + 0.001 * constraint(self.device, self.prompt.get_TaskToken())           
             temp_loss = temp_loss/(index+1)
             self.pg_opi.zero_grad()
@@ -171,6 +174,37 @@ class GraphTask(BaseTask):
             self.pg_opi.step()
             self.prompt.update_StructureToken_weight(self.prompt.get_mid_h())
         return temp_loss.item()
+
+    def _get_graph_embs_multigprompt(self, data_list):
+        """Get graph-level embeddings from Preprompt (GraphPrePrompt) for a list of graphs."""
+        from torch_geometric.data import Batch
+        from torch_geometric.nn import global_mean_pool
+        self.Preprompt.eval()
+        embs_list, embs1_list = [], []
+        with torch.no_grad():
+            loader = DataLoader(data_list, batch_size=32, shuffle=False)
+            for batch in loader:
+                features, adj_scipy = process.process_tu(batch, self.output_dim, self.input_dim)
+                features = torch.FloatTensor(features).to(self.device)
+                adj = process.normalize_adj(adj_scipy + sp.eye(adj_scipy.shape[0]))
+                adj_dense = torch.FloatTensor(adj.todense()).to(self.device)
+                h, _ = self.Preprompt.embed(features.unsqueeze(0), adj_dense.unsqueeze(0), False, None, False)
+                h_node = h[0] if h.dim() == 3 else h
+                batch_batch = batch.batch.to(self.device)
+                graph_emb = global_mean_pool(h_node, batch_batch)
+                embs_list.append(graph_emb)
+                embs1_list.append(graph_emb)
+        return torch.cat(embs_list, 0), torch.cat(embs1_list, 0)
+
+    def GraphMultiGpromptTrain(self, train_embs, train_embs1, train_lbls):
+        """Train DownPrompt for graph-level MultiGprompt (few-shot)."""
+        self.DownPrompt.train()
+        self.optimizer.zero_grad()
+        logits = self.DownPrompt(train_embs, train_embs1, train_lbls, 1).float().to(self.device)
+        loss = self.criterion(logits, train_lbls)
+        loss.backward(retain_graph=True)
+        self.optimizer.step()
+        return loss.item()
 
     def run(self):
         test_accs = []
@@ -252,10 +286,10 @@ class GraphTask(BaseTask):
                         self.gppt_loader = DataLoader(processed_dataset.to_data_list(), batch_size=1, shuffle=False)
                         for i, batch in enumerate(self.gppt_loader):
                             if(i==0):
-                                node_for_graph_labels = torch.full((1,batch.x.shape[0]), batch.y.item())
+                                node_for_graph_labels = torch.full((1,batch.x.shape[0]), safe_graph_label(batch.y))
                                 node_embedding = self.gnn(batch.x.to(self.device), batch.edge_index.to(self.device))
                             else:                   
-                                node_for_graph_labels = torch.concat([node_for_graph_labels,torch.full((1,batch.x.shape[0]), batch.y.item())],dim=1)
+                                node_for_graph_labels = torch.concat([node_for_graph_labels,torch.full((1,batch.x.shape[0]), safe_graph_label(batch.y))],dim=1)
                                 node_embedding = torch.concat([node_embedding,self.gnn(batch.x.to(self.device), batch.edge_index.to(self.device))],dim=0)
                         
                         node_for_graph_labels=node_for_graph_labels.reshape((-1)).to(self.device)
@@ -275,9 +309,9 @@ class GraphTask(BaseTask):
                         self.gppt_loader = DataLoader(self.dataset, batch_size=1, shuffle=True)
                         for i, batch in enumerate(self.gppt_loader):
                             if(i==0):
-                                node_for_graph_labels = torch.full((1,batch.x.shape[0]), batch.y.item())
+                                node_for_graph_labels = torch.full((1,batch.x.shape[0]), safe_graph_label(batch.y))
                             else:                   
-                                node_for_graph_labels = torch.concat([node_for_graph_labels,torch.full((1,batch.x.shape[0]), batch.y.item())],dim=1)
+                                node_for_graph_labels = torch.concat([node_for_graph_labels,torch.full((1,batch.x.shape[0]), safe_graph_label(batch.y))],dim=1)
                         
                         node_embedding = self.gnn(self.dataset.x.to(self.device), self.dataset.edge_index.to(self.device))
                         node_for_graph_labels=node_for_graph_labels.reshape((-1)).to(self.device)
@@ -297,6 +331,14 @@ class GraphTask(BaseTask):
                     #     else:
                     #         graph_embedding = torch.concat([graph_embedding,self.gppt_pool(node_embedding,batch.batch.long())],dim=0)
                 
+                if self.prompt_type == 'MultiGprompt':
+                    train_embs, train_embs1 = self._get_graph_embs_multigprompt(train_dataset)
+                    test_embs, test_embs1 = self._get_graph_embs_multigprompt(test_dataset)
+                    valid_embs, valid_embs1 = self._get_graph_embs_multigprompt(valid_dataset) if valid_dataset is not None else (None, None)
+                    train_lbls_mg = torch.tensor([safe_graph_label(g.y) for g in train_dataset], dtype=torch.long, device=self.device)
+                    valid_lbls_mg = torch.tensor([safe_graph_label(g.y) for g in valid_dataset], dtype=torch.long, device=self.device) if valid_dataset is not None else None
+                    test_lbls_mg = torch.tensor([safe_graph_label(g.y) for g in test_dataset], dtype=torch.long, device=self.device)
+
                 task_pbar.set_postfix(task=i)
                 for epoch in range(1, self.epochs + 1):
                     t0 = time.time()
@@ -312,6 +354,10 @@ class GraphTask(BaseTask):
                         best_center = center.detach()
                     elif self.prompt_type =='GPPT':
                         loss = self.GPPTtrain(train_loader)
+                    elif self.prompt_type == 'MultiGprompt':
+                        loss = self.GraphMultiGpromptTrain(train_embs, train_embs1, train_lbls_mg)
+                    else:
+                        raise ValueError("GraphTask: unsupported prompt_type '{}'".format(self.prompt_type))
 
                     epoch_training(epoch, time.time() - t0, loss)
 
@@ -337,6 +383,8 @@ class GraphTask(BaseTask):
                             va, vf1, vroc, vprc = GPFEva(eval_loader, self.gnn, self.prompt, self.answering, self.output_dim, self.device)
                         elif self.prompt_type =='Gprompt':
                             va, vf1, vroc, vprc = GpromptEva(eval_loader, self.gnn, self.prompt, best_center, self.output_dim, self.device)
+                        elif self.prompt_type == 'MultiGprompt':
+                            va, vf1, vroc, vprc = GraphMultiGpromptEva(valid_embs, valid_embs1, valid_lbls_mg, self.DownPrompt, self.output_dim, self.device)
                         val_metric = self.metric_from_eva(va, vf1, vroc, vprc)
                         val_metric_raw = val_metric
                         met_name = self.early_stopping_metric or 'valid_acc'
@@ -356,6 +404,9 @@ class GraphTask(BaseTask):
                                     ckpt['prompt'] = self.prompt.state_dict()
                                 if best_center is not None:
                                     ckpt['center'] = best_center.cpu()
+                                if self.prompt_type == 'MultiGprompt':
+                                    ckpt['DownPrompt'] = self.DownPrompt.state_dict()
+                                    ckpt['feature_prompt'] = self.feature_prompt.state_dict()
                                 torch.save(ckpt, ckpt_path)
                                 train_info("Checkpoint saved (best)")
                         else:
@@ -374,6 +425,10 @@ class GraphTask(BaseTask):
                             self.prompt.load_state_dict(ckpt['prompt'])
                         if 'center' in ckpt and self.prompt_type == 'Gprompt':
                             best_center = ckpt['center'].to(self.device)
+                        if self.prompt_type == 'MultiGprompt' and 'DownPrompt' in ckpt:
+                            self.DownPrompt.load_state_dict(ckpt['DownPrompt'])
+                            if 'feature_prompt' in ckpt:
+                                self.feature_prompt.load_state_dict(ckpt['feature_prompt'])
                         model_loaded(ckpt_path)
                 train_info('Begin to evaluate')
                 
@@ -384,6 +439,8 @@ class GraphTask(BaseTask):
                     test_acc, f1, roc, prc = GNNGraphEva(test_loader, self.gnn, self.answering, self.output_dim, self.device)
                 elif self.prompt_type =='GPPT':
                     test_acc, f1, roc, prc = GPPTGraphEva(test_loader, self.gnn, self.prompt, self.output_dim, self.device)
+                elif self.prompt_type == 'MultiGprompt':
+                    test_acc, f1, roc, prc = GraphMultiGpromptEva(test_embs, test_embs1, test_lbls_mg, self.DownPrompt, self.output_dim, self.device)
                 else:
                     test_acc, f1, roc, prc = GpromptEva(test_loader, self.gnn, self.prompt, best_center, self.output_dim, self.device)
 
@@ -474,10 +531,10 @@ class GraphTask(BaseTask):
                     self.gppt_loader = DataLoader(processed_dataset.to_data_list(), batch_size=1, shuffle=False)
                     for i, batch in enumerate(self.gppt_loader):
                         if(i==0):
-                            node_for_graph_labels = torch.full((1,batch.x.shape[0]), batch.y.item())
+                            node_for_graph_labels = torch.full((1,batch.x.shape[0]), safe_graph_label(batch.y))
                             node_embedding = self.gnn(batch.x.to(self.device), batch.edge_index.to(self.device))
                         else:                   
-                            node_for_graph_labels = torch.concat([node_for_graph_labels,torch.full((1,batch.x.shape[0]), batch.y.item())],dim=1)
+                            node_for_graph_labels = torch.concat([node_for_graph_labels,torch.full((1,batch.x.shape[0]), safe_graph_label(batch.y))],dim=1)
                             node_embedding = torch.concat([node_embedding,self.gnn(batch.x.to(self.device), batch.edge_index.to(self.device))],dim=0)
                     
                     node_for_graph_labels=node_for_graph_labels.reshape((-1)).to(self.device)
@@ -495,7 +552,7 @@ class GraphTask(BaseTask):
                     for batch in self.gppt_loader:
                         batch = batch.to(self.device)
                         node_emb_list.append(self.gnn(batch.x, batch.edge_index))
-                        node_for_graph_labels.append(torch.full((batch.x.shape[0],), batch.y.item() if batch.y.dim() == 0 else batch.y.squeeze().item(), device=self.device))
+                        node_for_graph_labels.append(torch.full((batch.x.shape[0],), safe_graph_label(batch.y), device=self.device))
                     node_embedding = torch.cat(node_emb_list, dim=0)
                     node_for_graph_labels = torch.cat(node_for_graph_labels)
                     self.prompt.weigth_init(node_embedding, batched_full.edge_index.to(self.device), node_for_graph_labels, train_node_ids)
@@ -504,7 +561,7 @@ class GraphTask(BaseTask):
                 # from torch_geometric.nn import global_mean_pool
                 # self.gppt_pool = global_mean_pool
                 # train_ids = torch.nonzero(idx_train, as_tuple=False).squeeze()
-                # self.gppt_loader = DataLoader(self.dataset, batch_size=1, shuffle=True)          
+                # self.gppt_loader = DataLoader(self.dataset, batch_size=1, shuffle=True)              
                 # for i, batch in enumerate(self.gppt_loader):
                 #     batch.to(self.device)
                 #     node_embedding = self.gnn(batch.x, batch.edge_index)
@@ -513,6 +570,14 @@ class GraphTask(BaseTask):
                 #     else:
                 #         graph_embedding = torch.concat([graph_embedding,self.gppt_pool(node_embedding,batch.batch.long())],dim=0)
                 
+
+            if self.prompt_type == 'MultiGprompt':
+                train_embs, train_embs1 = self._get_graph_embs_multigprompt(train_dataset)
+                test_embs, test_embs1 = self._get_graph_embs_multigprompt(test_dataset)
+                valid_embs, valid_embs1 = self._get_graph_embs_multigprompt(valid_dataset)
+                train_lbls_mg = torch.tensor([safe_graph_label(g.y) for g in train_dataset], dtype=torch.long, device=self.device)
+                valid_lbls_mg = torch.tensor([safe_graph_label(g.y) for g in valid_dataset], dtype=torch.long, device=self.device)
+                test_lbls_mg = torch.tensor([safe_graph_label(g.y) for g in test_dataset], dtype=torch.long, device=self.device)
 
             for epoch in range(1, self.epochs + 1):
                 t0 = time.time()
@@ -528,12 +593,17 @@ class GraphTask(BaseTask):
                     best_center = center.detach()
                 elif self.prompt_type =='GPPT':
                     loss = self.GPPTtrain(train_loader)
+                elif self.prompt_type == 'MultiGprompt':
+                    loss = self.GraphMultiGpromptTrain(train_embs, train_embs1, train_lbls_mg)
+                else:
+                    raise ValueError("GraphTask: unsupported prompt_type '{}'".format(self.prompt_type))
 
                 epoch_training(epoch, time.time() - t0, loss)
                 if epoch % eval_every != 0:
                     continue
 
                 va, vf1, vroc, vprc = 0.0, 0.0, 0.0, 0.0
+                eval_st = time.time()
                 if self.prompt_type == 'None':
                     va, vf1, vroc, vprc = GNNGraphEva(valid_loader, self.gnn, self.answering, self.output_dim, self.device)
                 elif self.prompt_type == 'GPPT':
@@ -544,9 +614,11 @@ class GraphTask(BaseTask):
                     va, vf1, vroc, vprc = GPFEva(valid_loader, self.gnn, self.prompt, self.answering, self.output_dim, self.device)
                 elif self.prompt_type == 'Gprompt':
                     va, vf1, vroc, vprc = GpromptEva(valid_loader, self.gnn, self.prompt, best_center, self.output_dim, self.device)
+                elif self.prompt_type == 'MultiGprompt':
+                    va, vf1, vroc, vprc = GraphMultiGpromptEva(valid_embs, valid_embs1, valid_lbls_mg, self.DownPrompt, self.output_dim, self.device)
                 val_metric = self.metric_from_eva(va, vf1, vroc, vprc)
                 met_name = self.early_stopping_metric or 'valid_acc'
-                epoch_evaluating(epoch, 0.0, val_metric, met_name)
+                epoch_evaluating(epoch, time.time() - eval_st, val_metric, met_name)
                 valid_result({"valid_acc": va, "valid_f1": vf1, "valid_auroc": vroc, "valid_auprc": vprc})
 
                 improved = (val_metric > best_val_metric) if higher_is_better else (val_metric < best_val_metric)
@@ -561,6 +633,9 @@ class GraphTask(BaseTask):
                             ckpt['prompt'] = self.prompt.state_dict()
                         if best_center is not None:
                             ckpt['center'] = best_center.cpu()
+                        if self.prompt_type == 'MultiGprompt':
+                            ckpt['DownPrompt'] = self.DownPrompt.state_dict()
+                            ckpt['feature_prompt'] = self.feature_prompt.state_dict()
                         torch.save(ckpt, ckpt_path)
                         train_info("Checkpoint saved (best)")
                 else:
@@ -577,6 +652,10 @@ class GraphTask(BaseTask):
                     self.prompt.load_state_dict(ckpt['prompt'])
                 if 'center' in ckpt and self.prompt_type == 'Gprompt':
                     best_center = ckpt['center'].to(self.device)
+                if self.prompt_type == 'MultiGprompt' and 'DownPrompt' in ckpt:
+                    self.DownPrompt.load_state_dict(ckpt['DownPrompt'])
+                    if 'feature_prompt' in ckpt:
+                        self.feature_prompt.load_state_dict(ckpt['feature_prompt'])
                 model_loaded(ckpt_path)
 
             train_info('Begin to evaluate')
@@ -588,6 +667,8 @@ class GraphTask(BaseTask):
                 test_acc, f1, roc, prc = GNNGraphEva(test_loader, self.gnn, self.answering, self.output_dim, self.device)
             elif self.prompt_type =='GPPT':
                 test_acc, f1, roc, prc = GPPTGraphEva(test_loader, self.gnn, self.prompt, self.output_dim, self.device)
+            elif self.prompt_type == 'MultiGprompt':
+                test_acc, f1, roc, prc = GraphMultiGpromptEva(test_embs, test_embs1, test_lbls_mg, self.DownPrompt, self.output_dim, self.device)
             else:
                 test_acc, f1, roc, prc = GpromptEva(test_loader, self.gnn, self.prompt, best_center, self.output_dim, self.device)
 

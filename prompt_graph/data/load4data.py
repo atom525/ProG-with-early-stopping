@@ -64,7 +64,8 @@ def graph_sample_and_save(dataset, k, folder, num_classes, split_ratio=[0.8, 0.1
     num_valid = int(valid_r * num_graphs)
     num_train_pool = num_graphs - num_test - num_valid
 
-    labels = torch.tensor([g.y.item() if g.y.dim() == 0 else g.y.squeeze().item() for g in dataset])
+    from ..utils.labels import safe_graph_label
+    labels = torch.tensor([safe_graph_label(g.y) for g in dataset])
     all_indices = torch.randperm(num_graphs)
     
     test_indices = all_indices[:num_test]

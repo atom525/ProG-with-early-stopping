@@ -301,6 +301,8 @@ class NodeTask(BaseTask):
                         elif self.prompt_type == 'MultiGprompt':
                               loss = self.MultiGpromptTrain(pretrain_embs, train_lbls, idx_train)
                               center = None
+                        else:
+                              raise ValueError("NodeTask: unsupported prompt_type '{}'".format(self.prompt_type))
 
                         epoch_training(epoch, time.time() - t0, loss)
 
@@ -313,6 +315,7 @@ class NodeTask(BaseTask):
                         eval_fn = PromptRegistry.get_evaluator(self.prompt_type, 'NodeTask')
                         if idx_valid is not None and (self.prompt_type in ['None', 'GPPT'] or (eval_fn and valid_loader is None)):
                               has_valid = True
+                              eval_st = time.time()
                               if eval_fn:
                                     va, vf1, vroc, vprc = eval_fn(loader=None, data=self.data, idx=idx_valid, gnn=self.gnn, prompt=self.prompt, answering=self.answering, output_dim=self.output_dim, device=self.device)
                               elif self.prompt_type == 'None':
@@ -322,10 +325,11 @@ class NodeTask(BaseTask):
                               val_metric = self.metric_from_eva(va, vf1, vroc, vprc)
                               val_metric_raw = val_metric
                               met_name = self.early_stopping_metric or 'valid_acc'
-                              epoch_evaluating(epoch, 0.0, val_metric_raw, met_name)
+                              epoch_evaluating(epoch, time.time() - eval_st, val_metric_raw, met_name)
                               valid_result({"valid_acc": va, "valid_f1": vf1, "valid_auroc": vroc, "valid_auprc": vprc})
                         elif valid_loader is not None and (self.prompt_type in ['GPF', 'GPF-plus', 'Gprompt', 'All-in-one'] or eval_fn):
                               has_valid = True
+                              eval_st = time.time()
                               if eval_fn:
                                     va, vf1, vroc, vprc = eval_fn(loader=valid_loader, data=self.data, idx=None, gnn=self.gnn, prompt=self.prompt, answering=self.answering, output_dim=self.output_dim, device=self.device, center=best_center)
                               elif self.prompt_type == 'All-in-one':
@@ -337,7 +341,7 @@ class NodeTask(BaseTask):
                               val_metric = self.metric_from_eva(va, vf1, vroc, vprc)
                               val_metric_raw = val_metric
                               met_name = self.early_stopping_metric or 'valid_acc'
-                              epoch_evaluating(epoch, 0.0, val_metric_raw, met_name)
+                              epoch_evaluating(epoch, time.time() - eval_st, val_metric_raw, met_name)
                               valid_result({"valid_acc": va, "valid_f1": vf1, "valid_auroc": vroc, "valid_auprc": vprc})
 
                         if has_valid:
@@ -353,6 +357,9 @@ class NodeTask(BaseTask):
                                         ckpt['prompt'] = self.prompt.state_dict()
                                     if best_center is not None:
                                         ckpt['center'] = best_center.cpu()
+                                    if self.prompt_type == 'MultiGprompt':
+                                        ckpt['DownPrompt'] = self.DownPrompt.state_dict()
+                                        ckpt['feature_prompt'] = self.feature_prompt.state_dict()
                                     torch.save(ckpt, ckpt_path)
                                     train_info("Checkpoint saved (best)")
                             else:
@@ -373,6 +380,10 @@ class NodeTask(BaseTask):
                                     self.prompt.load_state_dict(ckpt['prompt'])
                               if 'center' in ckpt and self.prompt_type == 'Gprompt':
                                     best_center = ckpt['center'].to(self.device)
+                              if self.prompt_type == 'MultiGprompt' and 'DownPrompt' in ckpt:
+                                    self.DownPrompt.load_state_dict(ckpt['DownPrompt'])
+                                    if 'feature_prompt' in ckpt:
+                                        self.feature_prompt.load_state_dict(ckpt['feature_prompt'])
                               model_loaded(ckpt_path)
 
                         eval_fn = PromptRegistry.get_evaluator(self.prompt_type, 'NodeTask')

@@ -12,7 +12,7 @@ from prompt_graph.data import load4node, load4graph, NodePretrain
 from torch.optim import Adam
 import os
 from .base import PreTrain
-from prompt_graph.utils.train_logger import train_info, epoch_training, epoch_evaluating, valid_result, finished_training, early_stopping_msg, model_saved, metric_from_dict, to_ordered_metrics
+from prompt_graph.utils.train_logger import train_info, epoch_training, epoch_evaluating, valid_result, finished_training, early_stopping_msg, model_saved, metric_from_dict, to_ordered_metrics, best_valid_ordered
 import time
 
 class GraphCL(PreTrain):
@@ -144,7 +144,7 @@ class GraphCL(PreTrain):
         train_info('start training {} | {} | {}'.format(self.dataset_name, 'GraphCL', self.gnn_type))
         optimizer = Adam(self.parameters(), lr=lr, weight_decay=decay)
         early_stopping_metric = getattr(args, 'early_stopping_metric', 'valid_acc') or 'valid_acc'
-        met_name = early_stopping_metric if early_stopping_metric == 'valid_acc' else 'valid_acc'
+        met_name = early_stopping_metric
         best_val_metric = -1.0
         best_epoch = 0
         cnt_wait = 0
@@ -155,7 +155,7 @@ class GraphCL(PreTrain):
             train_loss = self.train_graphcl(loader1, loader2, optimizer)
             train_time = time.time() - st_time
             epoch_training(epoch, train_time, train_loss)
-            if epoch % eval_every == 0 or epoch == 1:
+            if epoch % eval_every == 0:
                 eval_st = time.time()
                 valid_acc = self.evaluate_valid_acc()
                 eval_time = time.time() - eval_st
@@ -179,7 +179,7 @@ class GraphCL(PreTrain):
             self.gnn.to(self.device)
         finished_training(best_epoch if best_epoch > 0 else 1)
         if best_valid_metrics:
-            train_info("best valid: {}".format(best_valid_metrics))
+            best_valid_ordered(best_valid_metrics)
         from prompt_graph.utils.paths import get_pretrain_save_path
         suffix = ".{}.{}hidden_dim".format(self.gnn_type, self.hid_dim)
         save_path = get_pretrain_save_path(self.dataset_name, 'GraphCL', suffix=suffix)
