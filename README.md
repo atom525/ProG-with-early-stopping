@@ -1,4 +1,4 @@
-# ProG 使用说明 (RecBole 风格改造版)
+# ProG 使用说明
 
 > 本项目基于 [ProG](https://github.com/sheldonresearch/ProG) 进行 RecBole 风格改造，用于图预训练与提示学习。
 
@@ -64,7 +64,7 @@ python downstream_task.py \
 
 ---
 
-## 核心参数（RecBole 风格）
+## 核心参数
 
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
@@ -76,7 +76,7 @@ python downstream_task.py \
 | `--eval_every` | 每 N 轮在验证集上评估 | 1 |
 | `--early_stopping_metric` | 早停指标 (valid_acc / valid_loss) | valid_acc |
 
-### 项目目录结构（固定且带时间戳）
+### 项目目录结构
 
 | 目录 | 用途 |
 |------|------|
@@ -148,7 +148,7 @@ python downstream_task.py \
 
 ---
 
-## RecBole 风格配置说明
+## 配置说明
 
 通过 `--config_file config/config.yaml` 可加载 YAML 配置，**未在命令行显式传入的参数** 会使用配置文件中的值。
 
