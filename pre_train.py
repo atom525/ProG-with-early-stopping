@@ -6,7 +6,7 @@ from prompt_graph.pretrain import Edgepred_GPPT, Edgepred_Gprompt, GraphCL, SimG
 from prompt_graph.utils import seed_everything, mkdir, get_args
 from prompt_graph.utils.tee_logger import setup_logging
 from prompt_graph.utils.paths import get_log_path, get_pretrain_save_dir
-from prompt_graph.utils.train_logger import train_info
+from prompt_graph.utils.train_logger import train_info, log_args
 from prompt_graph.data import load4node, load4graph
 
 
@@ -64,6 +64,7 @@ if __name__ == "__main__":
         log_file = get_log_path(f"pretrain_{args.pretrain_task}", args.dataset_name)
     _logger = setup_logging(log_file)
     train_info('pretrain_task {} | dataset {} | log -> {}'.format(args.pretrain_task, args.dataset_name, log_file))
+    log_args(args, "pretrain args")
 
     pt = get_pretrain_task_delegate(args=args)
     pt.pretrain(args=args)

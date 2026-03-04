@@ -77,6 +77,25 @@ def model_loaded(path):
     train_info("Loading model structure and parameters from {}".format(path))
 
 
+def log_args(args, prefix="args"):
+    """训练启动时记录完整超参数（便于复现）"""
+    if args is None:
+        return
+    try:
+        d = vars(args)
+    except TypeError:
+        d = dict(args) if hasattr(args, 'items') else {}
+    train_info("=" * 50 + " " + prefix)
+    for k in sorted(d.keys()):
+        v = d[k]
+        if v is None:
+            continue
+        if isinstance(v, (list, tuple)):
+            v = " ".join(str(x) for x in v)
+        train_info("  {}: {}".format(k, v))
+    train_info("=" * 50)
+
+
 def to_ordered_metrics(acc, f1, roc, prc, prefix="valid"):
     """将 acc,f1,roc,prc 转为 OrderedDict"""
     return OrderedDict([

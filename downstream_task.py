@@ -7,7 +7,7 @@ from prompt_graph.registry import PromptRegistry
 from prompt_graph.utils import seed_everything, get_args
 from prompt_graph.utils.tee_logger import setup_logging
 from prompt_graph.utils.paths import get_induced_graph_path, get_downstream_checkpoint_dir, get_log_path
-from prompt_graph.utils.train_logger import train_info
+from prompt_graph.utils.train_logger import train_info, log_args
 from prompt_graph.data import load4node, load4graph, split_induced_graphs
 
 
@@ -91,6 +91,7 @@ if __name__ == "__main__":
     args.log_file = log_file
     _logger = setup_logging(log_file)
     train_info('dataset_name {} | log -> {}'.format(args.dataset_name, log_file))
+    log_args(args, "downstream args")
 
     tasker = get_downstream_task_delegate(args=args)
 
