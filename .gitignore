@@ -1,0 +1,29 @@
+# Project exclude paths
+.idea/*
+.idea/workspace.xml
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+/data
+/dataset
+/Docs
+
+/Experiment
+/Utility
+Experiment.zip
+
+/wandb
+/prjs
+
+debug_*.py
+batch_run_pretrain.py
+
+c_bench.py
+
+mcr_*.py
+
+# 训练产物（可本地保留，一般不提交）
+/checkpoints/
+/logs/
+/outputs/
