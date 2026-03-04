@@ -287,7 +287,34 @@ class NodeTask(BaseTask):
                   for epoch in range(1, self.epochs + 1):
                         t0 = time.time()
 
-                        if self.prompt_type == 'None':
+                        train_fn = PromptRegistry.get_train_fn(self.prompt_type)
+                        if train_fn is not None:
+                              ctx = {
+                                    'epoch': epoch,
+                                    'train_loader': train_loader,
+                                    'valid_loader': valid_loader,
+                                    'test_loader': test_loader,
+                                    'data': self.data,
+                                    'idx_train': idx_train,
+                                    'idx_valid': idx_valid,
+                                    'idx_test': idx_test,
+                                    'train_lbls': train_lbls,
+                                    'best_center': best_center,
+                                    'answer_epoch': getattr(self, 'answer_epoch', 50),
+                                    'prompt_epoch': getattr(self, 'prompt_epoch', 50),
+                              }
+                              if self.prompt_type == 'MultiGprompt':
+                                    ctx['pretrain_embs'] = pretrain_embs
+                              else:
+                                    ctx['pretrain_embs'] = None
+                              result = train_fn(self, ctx)
+                              if isinstance(result, tuple):
+                                    loss, extra = result
+                                    if isinstance(extra, dict) and 'center' in extra:
+                                          best_center = extra['center'].detach()
+                              else:
+                                    loss = float(result)
+                        elif self.prompt_type == 'None':
                               loss = self.train(self.data, idx_train)                             
                         elif self.prompt_type == 'GPPT':
                               loss = self.GPPTtrain(self.data, idx_train)                

@@ -1,10 +1,39 @@
 """
 RecBole-style Registry for modular prompt/evaluator/train integration.
 Add new prompt models by registering in your module - no need to modify task/train/eval core code.
+
+Pluggable Components:
+- prompt_class + init_kwargs_fn: Prompt initialization
+- evaluator: (loader, data, idx, gnn, prompt, answering, output_dim, device, **extra) -> (acc, f1, roc, prc)
+- train_fn: (task, epoch_context) -> loss | (loss, extra_dict)  # invoked each training epoch
+- optimizer_init_fn: (task) -> None  # invoked once before training
 """
 
-from typing import Callable, Dict, Any, Optional, Tuple
+from typing import Callable, Dict, Any, Optional, Tuple, Union
 from enum import Enum
+
+
+# ---------------------------------------------------------------------------
+# EpochContext: 传递给 train_fn 的上下文，包含当前 epoch 可用的数据与状态
+# ---------------------------------------------------------------------------
+#  schema (根据 task_type 和 prompt_type，部分 key 可能为 None):
+#   - epoch: int
+#   - train_loader: DataLoader | None
+#   - valid_loader: DataLoader | None
+#   - test_loader: DataLoader | None
+#   - data: Data (全图，NodeTask) | None
+#   - idx_train, idx_valid, idx_test: LongTensor | None
+#   - train_embs, train_embs1, train_lbls_mg: (GraphTask MultiGprompt) | None
+#   - pretrain_embs, train_lbls: (NodeTask MultiGprompt) | None
+#   - answer_epoch, prompt_epoch: int (All-in-one)
+#   - best_center: Tensor | None (Gprompt 等)
+# train_fn 可从 context 中提取所需字段，无需关心未使用字段
+# ---------------------------------------------------------------------------
+# train_fn 返回值:
+#   - loss: float  -> 仅返回 loss
+#   - (loss, extra_dict): tuple  -> extra_dict 可包含:
+#       - 'center': Tensor 用于 Gprompt 类 center 更新，Task 会赋给 best_center
+# ---------------------------------------------------------------------------
 
 
 class DataMode(str, Enum):
@@ -34,12 +63,23 @@ class PromptRegistry:
     _needs_center: Dict[str, bool] = {}
     # prompt_type -> init kwargs override (optional, for dataset-specific params)
     _prompt_init_kwargs: Dict[str, Callable] = {}
+    # prompt_type -> optimizer_init_fn(task) -> None，用于可插拔 prompt 的优化器初始化
+    _optimizer_init_fns: Dict[str, Callable] = {}
 
     @classmethod
     def register_prompt(cls, prompt_type: str, prompt_class: Any, data_mode: DataMode = DataMode.NODE_FULL,
                        needs_center: bool = False, train_method: Optional[str] = None,
-                       train_fn: Optional[Callable] = None, init_kwargs_fn: Optional[Callable[[Any], dict]] = None):
-        """Register a prompt model. Use train_fn for pluggable prompts; train_method for built-in task methods."""
+                       train_fn: Optional[Callable] = None, init_kwargs_fn: Optional[Callable[[Any], dict]] = None,
+                       optimizer_init_fn: Optional[Callable[[Any], None]] = None):
+        """
+        Register a prompt model.
+
+        - train_fn: Fully pluggable. Takes (task, epoch_context) -> loss | (loss, extra_dict).
+          When registered, Task.run() will call it each epoch instead of hardcoded branches.
+        - train_method: Legacy/documentation. Name of Task method for built-in prompts.
+        - optimizer_init_fn: When set, BaseTask.initialize_optimizer() will call it for this prompt_type
+          instead of hardcoded branches. Signature: (task) -> None.
+        """
         cls._prompt_classes[prompt_type] = prompt_class
         cls._data_modes[prompt_type] = data_mode
         cls._needs_center[prompt_type] = needs_center
@@ -49,6 +89,8 @@ class PromptRegistry:
             cls._train_fns[prompt_type] = train_fn
         if init_kwargs_fn:
             cls._prompt_init_kwargs[prompt_type] = init_kwargs_fn
+        if optimizer_init_fn:
+            cls._optimizer_init_fns[prompt_type] = optimizer_init_fn
 
     @classmethod
     def register_evaluator(cls, prompt_type: str, task_type: str, evaluator_fn: Callable):
@@ -69,8 +111,20 @@ class PromptRegistry:
 
     @classmethod
     def get_train_fn(cls, prompt_type: str) -> Optional[Callable]:
-        """External train function for pluggable prompts. Takes (task, epoch_context) -> loss or (loss, extra)."""
+        """
+        External train function for pluggable prompts.
+        Signature: (task, epoch_context: dict) -> float | (float, dict)
+        When returns (loss, extra_dict), extra_dict may contain 'center' for Gprompt-style updates.
+        """
         return cls._train_fns.get(prompt_type)
+
+    @classmethod
+    def get_optimizer_init_fn(cls, prompt_type: str) -> Optional[Callable]:
+        """
+        Optimizer init function for pluggable prompts.
+        Signature: (task) -> None. Should set task.optimizer (and optionally task.pg_opi, task.answer_opi).
+        """
+        return cls._optimizer_init_fns.get(prompt_type)
 
     @classmethod
     def get_data_mode(cls, prompt_type: str) -> DataMode:

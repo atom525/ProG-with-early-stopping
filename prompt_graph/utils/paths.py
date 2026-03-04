@@ -1,5 +1,13 @@
 """
 统一路径配置：数据、权重、日志分别存放在固定目录，带时间戳
+
+路径来源：config/config.yaml（优先级） > 默认值
+  - data_root       → data/                      # 原始数据集，load4data & download_data 共用
+  - pretrain_save   → checkpoints/pretrain/     # 预训练 {dataset}/{Model}_{ts}.pth
+  - checkpoint_dir → checkpoints/downstream/   # 下游 {dataset}_{ts}/*_best.pt
+  - log_dir         → logs/                     # 日志 {prefix}{task}_{dataset}_{ts}.log
+  - sample_data    → outputs/sample_data/       # few-shot Node/Graph/{dataset}/
+  - induced_graph   → outputs/induced_graph/    # 诱导子图 {dataset}/induced_graph_*.pkl
 """
 import os
 from datetime import datetime

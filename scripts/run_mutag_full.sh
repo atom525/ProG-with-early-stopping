@@ -15,7 +15,7 @@ fi
 echo "=========================================="
 echo "Step 0: 确保 MUTAG 已下载"
 echo "=========================================="
-python scripts/download_data.py --data_root data --datasets MUTAG
+python scripts/download_data.py --datasets MUTAG
 
 echo ""
 echo "=========================================="

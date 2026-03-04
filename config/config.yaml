@@ -1,14 +1,20 @@
 # ProG Configuration - RecBole-style Config
 # ==========================================
-# 路径规范：data/ 数据 | checkpoints/ 权重 | logs/ 日志 | outputs/ 中间数据，均带时间戳
+# 路径规范：所有路径相对于项目根目录，训练/评测日志和权重文件名带时间戳
+#
+# 【数据】data_root - 原始数据集（TUDataset、Planetoid、OGB 等）
+#         download_data.py 与 load4data 统一使用此路径
+# 【权重】pretrain_save_dir - 预训练模型；checkpoint_dir - 下游 checkpoint
+# 【日志】log_dir - 训练日志（pretrain_*/downstream_*_数据集_时间戳.log）
+# 【中间】sample_data_dir - few-shot 采样；induced_graph_dir - 诱导子图缓存
 
-# 路径配置（固定目录）
-data_root: data
-pretrain_save_dir: checkpoints/pretrain
-checkpoint_dir: checkpoints/downstream
-log_dir: logs
-sample_data_dir: outputs/sample_data
-induced_graph_dir: outputs/induced_graph
+# 路径配置（固定目录，见 prompt_graph.utils.paths）
+data_root: data                          # [数据下载] 原始数据集根目录
+pretrain_save_dir: checkpoints/pretrain  # [预训练权重] {dataset}/{Model}_{时间戳}.pth
+checkpoint_dir: checkpoints/downstream   # [下游权重] {dataset}_{时间戳}/*.pt
+log_dir: logs                            # [训练日志] {prefix}{task}_{dataset}_{时间戳}.log
+sample_data_dir: outputs/sample_data     # [few-shot] Node/Graph/{dataset}/k_shot/
+induced_graph_dir: outputs/induced_graph # [诱导子图] {dataset}/induced_graph_*.pkl
 
 # 数据划分（预训练与下游统一：train / valid / test）
 split_ratio: [0.8, 0.1, 0.1]
@@ -19,7 +25,7 @@ runseed: 0                    # 多次运行实验时的种子
 
 # 早停
 patience: 10                    # 连续多少轮验证指标不提升则停止
-# 可选：valid_acc / valid_f1 / valid_auroc / valid_auprc，下游任务早停指标
+# 下游：valid_acc / valid_f1 / valid_auroc / valid_auprc（NodeTask/GraphTask 默认 valid_acc，LinkTask 默认 valid_auroc）
 early_stopping_metric: valid_acc
 
 # 模型保存（验证集指标最优时保存）

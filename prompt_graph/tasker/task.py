@@ -58,6 +58,11 @@ class BaseTask:
             self.criterion = Gprompt_tuning_loss()
 
     def initialize_optimizer(self):
+        # 优先使用 registry 注册的 optimizer_init_fn（完全插件化）
+        opt_fn = PromptRegistry.get_optimizer_init_fn(self.prompt_type)
+        if opt_fn is not None:
+            opt_fn(self)
+            return
         if self.prompt_type == 'None':
             if self.pre_train_model_path == 'None':
                 model_param_group = []

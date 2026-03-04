@@ -30,6 +30,7 @@ def _err_msg(e):
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, PROJECT_ROOT)
+os.chdir(PROJECT_ROOT)  # 确保 paths 读取 config 时 cwd 正确
 
 def download_node_datasets(data_root='./data', datasets_filter=None, verbose=False):
     """下载节点级数据集。datasets_filter=None 表示全部，否则为需下载的集合。"""
@@ -148,22 +149,26 @@ def download_graph_datasets(data_root='./data', datasets_filter=None, verbose=Fa
 
 def main():
     parser = argparse.ArgumentParser(description='ProG 数据下载脚本')
-    parser.add_argument('--data_root', type=str, default='data',
-                        help='数据保存根目录，需与 load4data 中路径一致 (default: data)')
+    parser.add_argument('--data_root', type=str, default=None,
+                        help='数据保存根目录；未指定时使用 config/config.yaml 的 data_root（与训练/评测一致）')
     parser.add_argument('--datasets', type=str, default='all',
                         help='all | node | graph | 或逗号分隔的数据集名称')
     parser.add_argument('--verbose', '-v', action='store_true', help='失败时打印完整 traceback')
     args = parser.parse_args()
-    
-    os.makedirs(args.data_root, exist_ok=True)
+    data_root = args.data_root
+    if data_root is None:
+        from prompt_graph.utils.paths import get_data_root
+        data_root = get_data_root()
+        print(f"[路径] 使用 config 配置: data_root = {data_root}")
+    os.makedirs(data_root, exist_ok=True)
     
     if args.datasets == 'all':
-        download_node_datasets(args.data_root, datasets_filter=None, verbose=args.verbose)
-        download_graph_datasets(args.data_root, datasets_filter=None, verbose=args.verbose)
+        download_node_datasets(data_root, datasets_filter=None, verbose=args.verbose)
+        download_graph_datasets(data_root, datasets_filter=None, verbose=args.verbose)
     elif args.datasets == 'node':
-        download_node_datasets(args.data_root, datasets_filter=None, verbose=args.verbose)
+        download_node_datasets(data_root, datasets_filter=None, verbose=args.verbose)
     elif args.datasets == 'graph':
-        download_graph_datasets(args.data_root, datasets_filter=None, verbose=args.verbose)
+        download_graph_datasets(data_root, datasets_filter=None, verbose=args.verbose)
     else:
         # Specific datasets - download both node and graph if needed
         names = [s.strip() for s in args.datasets.split(',')]
@@ -176,9 +181,9 @@ def main():
         node_req = set(n for n in names if n in node_names)
         graph_req = set(n for n in names if n in graph_names)
         if node_req:
-            download_node_datasets(args.data_root, datasets_filter=node_req, verbose=args.verbose)
+            download_node_datasets(data_root, datasets_filter=node_req, verbose=args.verbose)
         if graph_req:
-            download_graph_datasets(args.data_root, datasets_filter=graph_req, verbose=args.verbose)
+            download_graph_datasets(data_root, datasets_filter=graph_req, verbose=args.verbose)
     
     print("\n数据下载完成。详见 README.md 中的数据集链接。")
 

@@ -1,6 +1,7 @@
 import argparse
 import os
 import pickle
+import sys
 from datetime import datetime
 from prompt_graph.tasker import NodeTask, GraphTask, LinkTask
 from prompt_graph.registry import PromptRegistry
@@ -54,7 +55,12 @@ def get_downstream_task_delegate(args:argparse.Namespace):
 
 
     elif args.downstream_task == 'GraphTask':
-        input_dim, output_dim, dataset = load4graph(args.dataset_name, getattr(args, 'shot_num', 10))
+        split_ratio = getattr(args, 'split_ratio', [0.8, 0.1, 0.1])
+        seed = getattr(args, 'seed', 42)
+        input_dim, output_dim, dataset = load4graph(
+            args.dataset_name, getattr(args, 'shot_num', 10),
+            split_ratio=split_ratio, seed=seed
+        )
         run_ts = datetime.now().strftime('%Y%m%d_%H%M%S')
         ckpt_dir = get_downstream_checkpoint_dir(args.dataset_name, run_ts)
         tasker = GraphTask(pre_train_model_path = args.pre_train_model_path, 
@@ -69,12 +75,14 @@ def get_downstream_task_delegate(args:argparse.Namespace):
     elif args.downstream_task == 'LinkTask':
         run_ts = datetime.now().strftime('%Y%m%d_%H%M%S')
         ckpt_dir = get_downstream_checkpoint_dir(args.dataset_name, run_ts)
+        # LinkTask 默认 valid_auroc；用户显式传 --early_stopping_metric 时用其值
+        link_metric = args.early_stopping_metric if '--early_stopping_metric' in sys.argv else 'valid_auroc'
         tasker = LinkTask(
             dataset_name=args.dataset_name, gnn_type=args.gnn_type, hid_dim=args.hid_dim, num_layer=args.num_layer,
             epochs=args.epochs, device=args.device, lr=args.lr, wd=args.decay,
             split_ratio=getattr(args, 'split_ratio', [0.8, 0.1, 0.1]), patience=getattr(args, 'patience', 20),
             save_best=getattr(args, 'save_best', True), checkpoint_dir=ckpt_dir,
-            eval_every=getattr(args, 'eval_every', 1), early_stopping_metric=getattr(args, 'early_stopping_metric', 'valid_acc'),
+            eval_every=getattr(args, 'eval_every', 1), early_stopping_metric=link_metric,
             log_dir=getattr(args, 'log_dir', 'logs'), log_file=getattr(args, 'log_file', None),
             pre_train_model_path=args.pre_train_model_path,
         )

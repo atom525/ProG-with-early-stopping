@@ -104,7 +104,7 @@ def node_degree_as_features(data_list):
             # 将度数特征拼接到现有的节点特征上
             data.x = torch.cat([data.x, deg], dim=1)
 
-def load4graph(dataset_name, shot_num= 10, num_parts=None, pretrained=False):
+def load4graph(dataset_name, shot_num=10, num_parts=None, pretrained=False, split_ratio=None, seed=42):
     r"""A plain old python object modeling a batch of graphs as one big
         (dicconnected) graph. With :class:`torch_geometric.data.Data` being the
         base class, all its methods can also be used here.
@@ -117,7 +117,7 @@ def load4graph(dataset_name, shot_num= 10, num_parts=None, pretrained=False):
         input_dim = dataset.num_features
         out_dim = dataset.num_classes
 
-        torch.manual_seed(12345)
+        torch.manual_seed(seed)
         dataset = dataset.shuffle()
         graph_list = [data for data in dataset]
 
@@ -152,7 +152,7 @@ def load4graph(dataset_name, shot_num= 10, num_parts=None, pretrained=False):
             return input_dim, out_dim, graph_list
         if shot_num == 0:
             from .graph_split import split_graph_dataset_full
-            train_list, valid_list, test_list = split_graph_dataset_full(graph_list)
+            train_list, valid_list, test_list = split_graph_dataset_full(graph_list, split_ratio=split_ratio, seed=seed)
             return input_dim, out_dim, (train_list, valid_list, test_list)
         return input_dim, out_dim, dataset
 
@@ -162,7 +162,7 @@ def load4graph(dataset_name, shot_num= 10, num_parts=None, pretrained=False):
         input_dim = dataset.num_features
         out_dim = dataset.num_classes
 
-        torch.manual_seed(12345)
+        torch.manual_seed(seed)
         dataset = dataset.shuffle()
         graph_list = [data for data in dataset]
 
@@ -177,7 +177,7 @@ def load4graph(dataset_name, shot_num= 10, num_parts=None, pretrained=False):
             return input_dim, out_dim, graph_list
         if shot_num == 0:
             from .graph_split import split_graph_dataset_full
-            train_list, valid_list, test_list = split_graph_dataset_full(graph_list)
+            train_list, valid_list, test_list = split_graph_dataset_full(graph_list, split_ratio=split_ratio, seed=seed)
             return input_dim, out_dim, (train_list, valid_list, test_list)
         return input_dim, out_dim, dataset
     else:

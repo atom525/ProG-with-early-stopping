@@ -343,7 +343,42 @@ class GraphTask(BaseTask):
                 for epoch in range(1, self.epochs + 1):
                     t0 = time.time()
 
-                    if self.prompt_type == 'None':
+                    train_fn = PromptRegistry.get_train_fn(self.prompt_type)
+                    if train_fn is not None:
+                        ctx = {
+                            'epoch': epoch,
+                            'train_loader': train_loader,
+                            'valid_loader': valid_loader,
+                            'test_loader': test_loader,
+                            'train_dataset': train_dataset,
+                            'valid_dataset': valid_dataset,
+                            'test_dataset': test_dataset,
+                            'best_center': best_center,
+                            'answer_epoch': getattr(self, 'answer_epoch', 50),
+                            'prompt_epoch': getattr(self, 'prompt_epoch', 50),
+                        }
+                        if self.prompt_type == 'MultiGprompt':
+                            ctx['train_embs'] = train_embs
+                            ctx['train_embs1'] = train_embs1
+                            ctx['train_lbls_mg'] = train_lbls_mg
+                            ctx['valid_embs'] = valid_embs
+                            ctx['valid_embs1'] = valid_embs1
+                            ctx['valid_lbls_mg'] = valid_lbls_mg
+                            ctx['test_embs'] = test_embs
+                            ctx['test_embs1'] = test_embs1
+                            ctx['test_lbls_mg'] = test_lbls_mg
+                        else:
+                            ctx['train_embs'] = ctx['train_embs1'] = ctx['train_lbls_mg'] = None
+                            ctx['valid_embs'] = ctx['valid_embs1'] = ctx['valid_lbls_mg'] = None
+                            ctx['test_embs'] = ctx['test_embs1'] = ctx['test_lbls_mg'] = None
+                        result = train_fn(self, ctx)
+                        if isinstance(result, tuple):
+                            loss, extra = result
+                            if isinstance(extra, dict) and 'center' in extra:
+                                best_center = extra['center'].detach()
+                        else:
+                            loss = float(result)
+                    elif self.prompt_type == 'None':
                         loss = self.Train(train_loader)
                     elif self.prompt_type == 'All-in-one':
                         loss = self.AllInOneTrain(train_loader,self.answer_epoch,self.prompt_epoch)
@@ -590,7 +625,42 @@ class GraphTask(BaseTask):
             for epoch in range(1, self.epochs + 1):
                 t0 = time.time()
 
-                if self.prompt_type == 'None':
+                train_fn = PromptRegistry.get_train_fn(self.prompt_type)
+                if train_fn is not None:
+                    ctx = {
+                        'epoch': epoch,
+                        'train_loader': train_loader,
+                        'valid_loader': valid_loader,
+                        'test_loader': test_loader,
+                        'train_dataset': train_dataset,
+                        'valid_dataset': valid_dataset,
+                        'test_dataset': test_dataset,
+                        'best_center': best_center,
+                        'answer_epoch': getattr(self, 'answer_epoch', 5),
+                        'prompt_epoch': getattr(self, 'prompt_epoch', 1),
+                    }
+                    if self.prompt_type == 'MultiGprompt':
+                        ctx['train_embs'] = train_embs
+                        ctx['train_embs1'] = train_embs1
+                        ctx['train_lbls_mg'] = train_lbls_mg
+                        ctx['valid_embs'] = valid_embs
+                        ctx['valid_embs1'] = valid_embs1
+                        ctx['valid_lbls_mg'] = valid_lbls_mg
+                        ctx['test_embs'] = test_embs
+                        ctx['test_embs1'] = test_embs1
+                        ctx['test_lbls_mg'] = test_lbls_mg
+                    else:
+                        ctx['train_embs'] = ctx['train_embs1'] = ctx['train_lbls_mg'] = None
+                        ctx['valid_embs'] = ctx['valid_embs1'] = ctx['valid_lbls_mg'] = None
+                        ctx['test_embs'] = ctx['test_embs1'] = ctx['test_lbls_mg'] = None
+                    result = train_fn(self, ctx)
+                    if isinstance(result, tuple):
+                        loss, extra = result
+                        if isinstance(extra, dict) and 'center' in extra:
+                            best_center = extra['center'].detach()
+                    else:
+                        loss = float(result)
+                elif self.prompt_type == 'None':
                     loss = self.Train(train_loader)
                 elif self.prompt_type == 'All-in-one':
                     loss = self.AllInOneTrain(train_loader,self.answer_epoch,self.prompt_epoch)

@@ -21,12 +21,12 @@
 **推荐先用 MUTAG 测试（图级，下载快，无需 GitHub）：**
 ```bash
 cd /path/to/ProG-with-early-stopping
-python scripts/download_data.py --data_root data --datasets MUTAG
+python scripts/download_data.py --datasets MUTAG   # 默认使用 config 的 data_root
 ```
 
-或下载全部：
+或指定数据根目录、下载全部：
 ```bash
-python scripts/download_data.py --data_root data
+python scripts/download_data.py --data_root data --datasets all
 ```
 若 Planetoid（Cora 等）下载失败，可加 `-v` 查看详细错误，参见下方「下载失败时」。
 
@@ -66,26 +66,26 @@ python downstream_task.py \
 
 ## 核心参数
 
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `--split_ratio` | 训练/验证/测试划分比例 | 0.8 0.1 0.1 |
-| `--patience` | 早停耐心值 | 10 |
+| 参数 | 说明 | 默认值（无 config 时） |
+|------|------|------------------------|
+| `--split_ratio` | 训练/验证/测试划分比例（3 个浮点数） | 0.8 0.1 0.1 |
+| `--patience` | 早停耐心值 | 10（config 中可配） |
 | `--save_best` | 是否保存最佳 checkpoint | True |
 | `--checkpoint_dir` | 下游 checkpoint 保存目录 | checkpoints/downstream |
 | `--config_file` | YAML 配置文件路径 | config/config.yaml |
-| `--eval_every` | 每 N 轮在验证集上评估 | 1 |
-| `--early_stopping_metric` | 早停指标：valid_acc / valid_f1 / valid_auroc / valid_auprc | valid_acc |
+| `--eval_every` | 每 N 轮在验证集上评估 | 1（config 中可配为 5） |
+| `--early_stopping_metric` | 早停指标：valid_acc / valid_f1 / valid_auroc / valid_auprc；**LinkTask 默认 valid_auroc** | valid_acc |
 
 ### 项目目录结构
 
-| 目录 | 用途 |
-|------|------|
-| `data/` | 原始数据（TUDataset、Planetoid 等） |
-| `checkpoints/pretrain/` | 预训练权重 |
-| `checkpoints/downstream/` | 下游任务 checkpoint |
-| `logs/` | 日志文件 |
-| `outputs/sample_data/` | few-shot 采样数据 |
-| `outputs/induced_graph/` | 诱导子图缓存 |
+| 目录 | 用途 | 文件命名 |
+|------|------|----------|
+| `data/` | **[数据]** 原始数据集（TUDataset、Planetoid、OGB） | 由 PyG/OGB 自动组织 |
+| `checkpoints/pretrain/` | **[预训练权重]** 预训练模型保存 | `{dataset}/{Model}{suffix}_{时间戳}.pth` |
+| `checkpoints/downstream/` | **[下游权重]** 下游任务 best checkpoint | `{dataset}_{时间戳}/{name}_best.pt` |
+| `logs/` | **[训练日志]** 预训练与下游训练日志 | `pretrain_{task}_{dataset}_{时间戳}.log` 等 |
+| `outputs/sample_data/` | **[中间]** few-shot 采样划分 | `Node/Graph/{dataset}/k_shot/i/` |
+| `outputs/induced_graph/` | **[中间]** 诱导子图缓存 | `{dataset}/induced_graph_min*_max*.pkl` |
 
 ---
 
@@ -154,8 +154,10 @@ python downstream_task.py \
 
 ### 配置文件：`config/config.yaml`
 
+完整配置见 `config/config.yaml`，主要项包括：
+
 ```yaml
-# 路径
+# 路径（data_root、pretrain_save_dir、checkpoint_dir、log_dir、sample_data_dir、induced_graph_dir）
 data_root: data
 checkpoint_dir: checkpoints/downstream
 log_dir: logs
@@ -166,13 +168,13 @@ split_ratio: [0.8, 0.1, 0.1]
 # 早停与验证
 patience: 10                    # 连续多少轮验证指标不提升则停止
 early_stopping_metric: valid_acc # valid_acc / valid_f1 / valid_auroc / valid_auprc（均越大越好）
-evaluate_every: 1               # 每多少 epoch 在验证集上评估一次并打印
+evaluate_every: 5               # 每多少 epoch 在验证集上评估一次（下游常用 1）
 
 # 模型保存（验证集指标最优时保存 checkpoint）
 save_best: true
 
 # 训练
-epochs: 1000
+epochs: 10000                   # 预训练常用较大值，配合早停
 batch_size: 128
 lr: 0.001
 weight_decay: 0.0
@@ -231,7 +233,7 @@ chmod +x scripts/run_mutag_full.sh
 cd /path/to/ProG-with-early-stopping
 
 # 1. 下载数据（约 5 秒）
-python scripts/download_data.py --data_root data --datasets MUTAG
+python scripts/download_data.py --datasets MUTAG
 
 # 2. 预训练
 python pre_train.py \
@@ -244,10 +246,10 @@ python pre_train.py \
     --device 0 \
     --config_file config/config.yaml
 
-# 3. 下游任务
+# 3. 下游任务（pre_train_model_path 需替换为预训练实际保存的路径）
 python downstream_task.py \
     --downstream_task GraphTask \
-    --pre_train_model_path checkpoints/pretrain/MUTAG/MultiGprompt.pth \
+    --pre_train_model_path checkpoints/pretrain/MUTAG/MultiGprompt_20250303_123456.pth \
     --dataset_name MUTAG \
     --gnn_type GIN \
     --prompt_type Gprompt \
@@ -261,9 +263,9 @@ python downstream_task.py \
 
 **节点级任务（Cora，需能访问 GitHub）：**
 ```bash
-python scripts/download_data.py --data_root data --datasets Cora
+python scripts/download_data.py --datasets Cora
 python pre_train.py --pretrain_task Edgepred_Gprompt --dataset_name Cora --gnn_type GCN --epochs 500 --device 0
-python downstream_task.py --downstream_task NodeTask --pre_train_model_path checkpoints/pretrain/Cora/Edgepred_Gprompt.GCN.128hidden_dim.pth --dataset_name Cora --prompt_type GPF-plus --shot_num 1 --device 0
+python downstream_task.py --downstream_task NodeTask --pre_train_model_path checkpoints/pretrain/Cora/Edgepred_Gprompt.GCN.128hidden_dim_20250303_123456.pth --dataset_name Cora --prompt_type GPF-plus --shot_num 1 --device 0
 ```
 
 ---
