@@ -20,7 +20,7 @@
 
 **推荐先用 MUTAG 测试（图级，下载快，无需 GitHub）：**
 ```bash
-cd /path/to/Graphpro/ProG
+cd /path/to/ProG-with-early-stopping
 python scripts/download_data.py --data_root data --datasets MUTAG
 ```
 
@@ -206,7 +206,11 @@ weight_decay: 0.0
 
 ## 依赖
 
-除 ProG 原有依赖外，若使用 YAML 配置需安装：`pip install PyYAML`
+```bash
+pip install -r requirements.txt
+```
+
+除 ProG 原有依赖外，若使用 YAML 配置需安装 PyYAML（已包含在 requirements.txt 中）。
 
 **若出现 `GLIBCXX_3.4.29' not found`**，使用 conda 自带的 libstdc++：
 ```bash
@@ -217,14 +221,14 @@ export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 
 **方式一：一键脚本**
 ```bash
-cd /data1/liulingfeng/cooperation/ghy/Graphpro/ProG
+cd /path/to/ProG-with-early-stopping
 chmod +x scripts/run_mutag_full.sh
 ./scripts/run_mutag_full.sh
 ```
 
 **方式二：分步执行（MUTAG 图级任务）**
 ```bash
-cd /data1/liulingfeng/cooperation/ghy/Graphpro/ProG
+cd /path/to/ProG-with-early-stopping
 
 # 1. 下载数据（约 5 秒）
 python scripts/download_data.py --data_root data --datasets MUTAG
