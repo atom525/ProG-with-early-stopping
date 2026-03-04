@@ -74,7 +74,7 @@ python downstream_task.py \
 | `--checkpoint_dir` | 下游 checkpoint 保存目录 | checkpoints/downstream |
 | `--config_file` | YAML 配置文件路径 | config/config.yaml |
 | `--eval_every` | 每 N 轮在验证集上评估 | 1 |
-| `--early_stopping_metric` | 早停指标 (valid_acc / valid_loss) | valid_acc |
+| `--early_stopping_metric` | 早停指标：valid_acc / valid_f1 / valid_auroc / valid_auprc | valid_acc |
 
 ### 项目目录结构
 
@@ -165,7 +165,7 @@ split_ratio: [0.8, 0.1, 0.1]
 
 # 早停与验证
 patience: 10                    # 连续多少轮验证指标不提升则停止
-early_stopping_metric: valid_acc # valid_acc（越大越好）| valid_loss（越小越好）
+early_stopping_metric: valid_acc # valid_acc / valid_f1 / valid_auroc / valid_auprc（均越大越好）
 evaluate_every: 1               # 每多少 epoch 在验证集上评估一次并打印
 
 # 模型保存（验证集指标最优时保存 checkpoint）
