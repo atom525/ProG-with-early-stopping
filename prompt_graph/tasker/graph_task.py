@@ -372,7 +372,11 @@ class GraphTask(BaseTask):
                         eval_st = time.time()
                         eval_fn = PromptRegistry.get_evaluator(self.prompt_type, 'GraphTask')
                         if eval_fn:
-                            va, vf1, vroc, vprc = eval_fn(loader=eval_loader, data=None, idx=None, gnn=self.gnn, prompt=self.prompt, answering=self.answering, output_dim=self.output_dim, device=self.device, center=best_center)
+                            if self.prompt_type == 'MultiGprompt':
+                                va, vf1, vroc, vprc = eval_fn(loader=eval_loader, data=None, idx=None, gnn=self.gnn, prompt=self.prompt, answering=self.answering, output_dim=self.output_dim, device=self.device,
+                                                              valid_embs=valid_embs, valid_embs1=valid_embs1, valid_lbls=valid_lbls_mg, DownPrompt=self.DownPrompt)
+                            else:
+                                va, vf1, vroc, vprc = eval_fn(loader=eval_loader, data=None, idx=None, gnn=self.gnn, prompt=self.prompt, answering=self.answering, output_dim=self.output_dim, device=self.device, center=best_center)
                         elif self.prompt_type == 'None':
                             va, vf1, vroc, vprc = GNNGraphEva(eval_loader, self.gnn, self.answering, self.output_dim, self.device)
                         elif self.prompt_type =='GPPT':
@@ -434,7 +438,11 @@ class GraphTask(BaseTask):
                 
                 eval_fn = PromptRegistry.get_evaluator(self.prompt_type, 'GraphTask')
                 if eval_fn:
-                    test_acc, f1, roc, prc = eval_fn(loader=test_loader, data=None, idx=None, gnn=self.gnn, prompt=self.prompt, answering=self.answering, output_dim=self.output_dim, device=self.device, center=best_center)
+                    if self.prompt_type == 'MultiGprompt':
+                        test_acc, f1, roc, prc = eval_fn(loader=test_loader, data=None, idx=None, gnn=self.gnn, prompt=self.prompt, answering=self.answering, output_dim=self.output_dim, device=self.device,
+                                                        test_embs=test_embs, test_embs1=test_embs1, test_lbls=test_lbls_mg, DownPrompt=self.DownPrompt)
+                    else:
+                        test_acc, f1, roc, prc = eval_fn(loader=test_loader, data=None, idx=None, gnn=self.gnn, prompt=self.prompt, answering=self.answering, output_dim=self.output_dim, device=self.device, center=best_center)
                 elif self.prompt_type == 'None':
                     test_acc, f1, roc, prc = GNNGraphEva(test_loader, self.gnn, self.answering, self.output_dim, self.device)
                 elif self.prompt_type =='GPPT':
@@ -662,7 +670,11 @@ class GraphTask(BaseTask):
             
             eval_fn = PromptRegistry.get_evaluator(self.prompt_type, 'GraphTask')
             if eval_fn:
-                test_acc, f1, roc, prc = eval_fn(loader=test_loader, data=None, idx=None, gnn=self.gnn, prompt=self.prompt, answering=self.answering, output_dim=self.output_dim, device=self.device, center=best_center)
+                if self.prompt_type == 'MultiGprompt':
+                    test_acc, f1, roc, prc = eval_fn(loader=test_loader, data=None, idx=None, gnn=self.gnn, prompt=self.prompt, answering=self.answering, output_dim=self.output_dim, device=self.device,
+                                                    test_embs=test_embs, test_embs1=test_embs1, test_lbls=test_lbls_mg, DownPrompt=self.DownPrompt)
+                else:
+                    test_acc, f1, roc, prc = eval_fn(loader=test_loader, data=None, idx=None, gnn=self.gnn, prompt=self.prompt, answering=self.answering, output_dim=self.output_dim, device=self.device, center=best_center)
             elif self.prompt_type == 'None':
                 test_acc, f1, roc, prc = GNNGraphEva(test_loader, self.gnn, self.answering, self.output_dim, self.device)
             elif self.prompt_type =='GPPT':

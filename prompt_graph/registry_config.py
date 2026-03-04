@@ -3,7 +3,7 @@ Registration of all built-in prompts, evaluators, and data modes.
 Add new prompts here (or in a separate file that imports this) - no need to touch task code.
 """
 from .registry import PromptRegistry, DataMode
-from .evaluation import GNNNodeEva, GNNGraphEva, GPPTEva, GPPTGraphEva, GPFEva, GpromptEva, AllInOneEva, MultiGpromptEva
+from .evaluation import GNNNodeEva, GNNGraphEva, GPPTEva, GPPTGraphEva, GPFEva, GpromptEva, AllInOneEva, MultiGpromptEva, GraphMultiGpromptEva
 
 
 def _register_evaluators():
@@ -67,12 +67,23 @@ def _register_evaluators():
     def graph_allinone_eval(loader, data, idx, gnn, prompt, answering, output_dim, device, **extra):
         return AllInOneEva(loader, prompt, gnn, answering, output_dim, device)
 
+    def graph_multigprompt_eval(loader, data, idx, gnn, prompt, answering, output_dim, device, **extra):
+        """Graph-level MultiGprompt: 从 extra 获取 embs/embs1/lbls，签名与其他 evaluator 一致"""
+        embs = extra.get('valid_embs') or extra.get('test_embs')
+        embs1 = extra.get('valid_embs1') or extra.get('test_embs1')
+        lbls = extra.get('valid_lbls') or extra.get('test_lbls')
+        DownPrompt = extra.get('DownPrompt')
+        if embs is None or embs1 is None or lbls is None or DownPrompt is None:
+            raise ValueError("GraphMultiGpromptEva requires valid_embs, valid_embs1, valid_lbls, DownPrompt in extra")
+        return GraphMultiGpromptEva(embs, embs1, lbls, DownPrompt, output_dim, device)
+
     PromptRegistry.register_evaluator('None', 'GraphTask', graph_none_eval)
     PromptRegistry.register_evaluator('GPPT', 'GraphTask', graph_gppt_eval)
     PromptRegistry.register_evaluator('GPF', 'GraphTask', graph_gpf_eval)
     PromptRegistry.register_evaluator('GPF-plus', 'GraphTask', graph_gpf_eval)
     PromptRegistry.register_evaluator('Gprompt', 'GraphTask', graph_gprompt_eval)
     PromptRegistry.register_evaluator('All-in-one', 'GraphTask', graph_allinone_eval)
+    PromptRegistry.register_evaluator('MultiGprompt', 'GraphTask', graph_multigprompt_eval)
 
 
 def _register_prompts():
